@@ -24,3 +24,5 @@ Design:
 
 bugs: sometimes when updating the programm, the ESP32 resets in the middle of the color display
 (this problem does not appear anymore when the game is reseted directly on the card)
+
+To add: When the player loses, find a way to show him the cood color

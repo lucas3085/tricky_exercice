@@ -1,13 +1,13 @@
 /*
 Game: classic SIMON
 Design:
- * one led strip displays randomly one of the 4 colors every second, this nb_leds_strip times
+ * one led strip displays randomly one of the 4 colors every second, this 10 times
  * the other led strip in white lights one more led for every new player_color
  Once all the colors are displayed, the first led strip displays white, the other nothing
  -> the user has to press the buttons in the correct order
  * One led strip displays the selected player_color one led by one led
  * the other displays the progression of the player (n leds = ncorrect answer)
- The player goal is to find the nb_leds_strip colors in the right order
+ The player goal is to find the 10 colors in the right order
 
   Warning: don't display the same player_color 2 times in a row ! (not player-friendly)
  */
@@ -26,23 +26,22 @@ Design:
 #define LED1_PIN 12 // # pin of the first led
 #define LED2_PIN 13 
 
-#define total_nb_leds_strip 10 // (actual) number of leds in each strip
-#define nb_leds_strip 6 // USED number of leds in each strip : DIFFICULTY
+#define nb_leds_strip 10 // number of leds in each strip
 
 #define BUTTON_R_PIN 34 // # pin of the red button
 #define BUTTON_G_PIN 35
 #define BUTTON_B_PIN 25
 #define BUTTON_Y_PIN 26
 
-Adafruit_NeoPixel strip_led1(total_nb_leds_strip, LED1_PIN, NEO_GRB + NEO_KHZ800); // first led strip
-Adafruit_NeoPixel strip_led2(total_nb_leds_strip, LED2_PIN, NEO_GRB + NEO_KHZ800); // second led strip
+Adafruit_NeoPixel strip_led1(nb_leds_strip, LED1_PIN, NEO_GRB + NEO_KHZ800); // first led strip
+Adafruit_NeoPixel strip_led2(nb_leds_strip, LED2_PIN, NEO_GRB + NEO_KHZ800); // second led strip
 
 
 bool player_turn = false; // used to select stage of the game
 bool player_lost = false; // turns true when a false color is chosen
 
 int brightness = 100; // brightness of the leds (0-255)
-double delay_display = 750; // in ms
+double delay_display = 500; // in ms
 
 // defining the colors 
 uint32_t red = strip_led1.Color(255, 0, 0);
@@ -64,8 +63,8 @@ int currentState_G;
 int currentState_B;
 int currentState_Y;
 
-int player_color_list[nb_leds_strip] = {0};
-int game_color_list[nb_leds_strip] = {0};
+int player_color_list[10] = {0};
+int game_color_list[10] = {0};
 
 /********************
         SETUP
@@ -82,12 +81,6 @@ void setup() {
   pinMode(BUTTON_B_PIN, INPUT_PULLUP);
   pinMode(BUTTON_Y_PIN, INPUT_PULLUP);
 
-  for(int i = 0; i < total_nb_leds_strip; i++){ // for every led of the strips
-    strip_led1.clear();
-    strip_led2.clear();
-    strip_led1.show();
-    strip_led2.show();
-  }
 } 
 
 /********************
@@ -101,30 +94,16 @@ void loop() {
 
   if(!player_turn){ // first the program displays the colors 1 by 1
 
-    // displays 3 blinks of white before beginning the sequence 
-    for(int blink_w=0; blink_w < 3; blink_w++){
-        for(int i = 0; i < nb_leds_strip; i++){ // for every led
-          strip_led1.setBrightness(brightness); // total brightness of the leds
-          strip_led2.setBrightness(brightness); // total brightness of the leds
-          strip_led1.setPixelColor(i, white);
-          strip_led2.setPixelColor(i, white); 
-          strip_led1.show(); // refresh all the leds
-          strip_led2.show(); // refresh all the leds
-
-        }
-      delay(delay_display/2);
-      for(int i = 0; i < nb_leds_strip; i++){ // for every led
-          strip_led1.clear(); 
-          strip_led2.clear();
-          strip_led1.show(); // refresh all the leds
-          strip_led2.show(); // refresh all the leds
-        }
-      delay(delay_display/2);
+    // displays white before beginning the sequence 
+    for(int i = 0; i < 10; i++){ // for every led of the first strip
+        strip_led1.setBrightness(brightness); // total brightness of the leds
+        strip_led1.setPixelColor(i, white); 
+        strip_led1.show(); // refresh all the leds
     }
-    
+    delay(delay_display);
 
-    // displaying the sequence of nb_leds_strip colors
-    for (int i = 0; i < nb_leds_strip; i++){ // displays nb_leds_strip colors, 1 color/second
+    // displaying the sequence of 10 colors
+    for (int i = 0; i < 10; i++){ // displays 10 colors, 1 color/second
 
       // selection of a new random color
       do{
@@ -143,7 +122,7 @@ void loop() {
       Serial.println(rand_color);
 
       // displays the color on strip 1
-      for(int j = 0; j < nb_leds_strip; j++){ // for every led of the first strip
+      for(int j = 0; j < 10; j++){ // for every led of the first strip
         strip_led1.setBrightness(brightness); // total brightness of the leds
         strip_led1.setPixelColor(j, color_display); 
         strip_led1.show(); // refresh all the leds
@@ -160,7 +139,7 @@ void loop() {
     }
     player_turn = true; // the lights were displayed, now player turn
 
-    for(int j = 0; j < total_nb_leds_strip; j++){ // for every led of the strips
+    for(int i = 0; i < 10; i++){ // for every led of the strips
       strip_led1.clear(); 
       strip_led2.clear(); 
 
@@ -172,8 +151,8 @@ void loop() {
   else{
     // Player turn 
 
-    if(player_loop_number >= nb_leds_strip - 1){ // the nb_leds_strip colors are chosen correctly : display all in green
-      for(int i = 0; i < nb_leds_strip; i++){ 
+    if(player_loop_number >= 9){ // the 10 colors are chosen correctly : display all in green
+      for(int i = 0; i < 10; i++){ 
         strip_led1.setPixelColor(i, green); 
         strip_led2.setPixelColor(i, green); 
         strip_led1.show(); // refresh all the leds
@@ -182,7 +161,7 @@ void loop() {
     }
 
     else if(player_lost){ // lost in the previous loop : display all in red
-      for(int i = 0; i < nb_leds_strip; i++){
+      for(int i = 0; i < 10; i++){
         strip_led1.setPixelColor(i, red); 
         strip_led2.setPixelColor(i, red); 
         strip_led1.show(); // refresh all the leds
@@ -192,8 +171,10 @@ void loop() {
 
     else{ // the game still runs
       
-      uint32_t player_color; // rgb color selected by the player
-      int player_color_int = -1; // color equivalent with [0,3] integer
+      
+      
+      uint32_t player_color;
+      int player_color_int = -1;
 
       // buttons states (1 if not pressed, 1 if pressed)
       currentState_R = digitalRead(BUTTON_R_PIN);
@@ -214,26 +195,23 @@ void loop() {
         player_color = yellow;
         player_color_int = 3;}
       
-      // When any button is pushed then released:
+      // detects if any button is pushed then released
       if((lastState_R == 1 && currentState_R == 0) ||
       (lastState_G == 1 && currentState_G == 0) ||
       (lastState_B == 1 && currentState_B == 0) ||
       (lastState_Y == 1 && currentState_Y == 0)){
 
-        player_loop_number++; // increase the loop number
+        player_loop_number++;
 
         // adds the corresponding color to the list
         player_color_list[player_loop_number] = player_color;
 
-        // display the player sequence on the first strip
-        for(int i = 0; i < nb_leds_strip; i++){ 
+        for(int i = 0; i < 10; i++){ // for every led of the first strip
           strip_led1.setPixelColor(i, player_color_list[i]); 
-          strip_led1.show();
+          strip_led1.show(); // refresh all the leds
         }
 
-        Serial.println(player_color_int);
-
-        // checks for player mistake
+        // checks for mistake
         if(player_loop_number >=0){ // don't check before the first button is pressed
           if(player_color_int != game_color_list[player_loop_number]){
             player_lost = true;
@@ -245,7 +223,7 @@ void loop() {
       lastState_B = currentState_B;
       lastState_Y = currentState_Y;
       
-      delay(10); // avoid repetition bug
+
       
 
     }
