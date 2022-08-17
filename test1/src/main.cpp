@@ -1,16 +1,18 @@
 /*
-Game: classic SIMON
-Design:
- * one led strip displays randomly one of the 4 colors every second, this nb_leds_strip times
- * the other led strip in white lights one more led for every new player_color
+classic SIMON game + Websocket control
+
+Game design:
+ * one led strip displays randomly one of the 4 colors every second, this nb_leds_strip_used times
  Once all the colors are displayed, the first led strip displays white, the other nothing
  -> the user has to press the buttons in the correct order
  * One led strip displays the selected player_color one led by one led
- * the other displays the progression of the player (n leds = ncorrect answer)
- The player goal is to find the nb_leds_strip colors in the right order
+ The player goal is to find the nb_leds_strip_used colors in the right order
 
-  Warning: don't display the same player_color 2 times in a row ! (not player-friendly)
-  Bug: unwanted reset happening once when uploading the code /!\ not solved
+Websocket control:
+  Websocket prints difficulty and turns on/off the first led strip remotely via html + wifi. 
+  Code inspired by Rui Santos: https://RandomNerdTutorials.com/esp32-esp8266-web-server-physical-button/
+
+  Todo: change "delay" by timer functions like "millis"
  */
 
 
@@ -20,6 +22,21 @@ Design:
 
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h> // used to light the led strips
+
+// used for the websocket connection
+#include <WiFi.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+
+const char* ssid = "Freebox-652A31";
+const char* password = "monstrabas-prosecuto-noxias-faculas";
+
+const char* PARAM_INPUT_1 = "state";
+
+unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
+unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
+// Create AsyncWebServer object on port 80
+AsyncWebServer server(80);
 
 /********************
     FIXED VARIABLES
@@ -33,6 +50,11 @@ Design:
 #define BUTTON_G_PIN 35 // pin # of the green button
 #define BUTTON_B_PIN 25 // pin # of the blue button
 #define BUTTON_Y_PIN 26 // pin # of the yellow button
+
+// Variables will change:
+int ledState = LOW;          // the current state of the output pin
+int buttonState;             // the current reading from the input pin
+int lastButtonState = LOW;   // the previous reading from the input pin
 
 // NeoPixel led strips initialisation
 #define total_nb_leds_strip 10 // maximum number of leds in each strip
@@ -50,11 +72,11 @@ uint32_t white = strip_led1.Color(255, 255, 255); // packed RGB of white
   GAMEPLAY VARIABLES
 *********************/
 
-int brightness = 30; // brightness of the leds (0-255)
+int brightness = 50; // brightness of the leds (0-255)
 double delay_display = 750; // waiting time between each color (in ms)
 int color_before = -1; // used in the loop to have a new color every time
 int player_loop_number = -1; // number of buttons pressed by the user
-#define nb_leds_strip 6 // USED number of leds in each strip : DIFFICULTY (1-total_nb_leds_strip)
+#define nb_leds_strip_used 5 // USED number of leds in each strip : DIFFICULTY [1,total_nb_leds_strip]
 
 /********************
     OTHER VARIABLES
@@ -75,8 +97,89 @@ int currentState_B; // current state of the blue button (1: OFF, 0: PRESSED)
 int currentState_Y; // current state of the yellow button (1: OFF, 0: PRESSED)
 
 // list used to display the colors and compare the results
-int player_color_list[nb_leds_strip] = {0}; // list of the player color inputs
-int game_color_list[nb_leds_strip] = {0}; // list of the game random color inputs
+int player_color_list[nb_leds_strip_used] = {0}; // list of the player color inputs
+int game_color_list[nb_leds_strip_used] = {0}; // list of the game random color inputs
+
+/********************
+    WEBSOCKET CONF
+*********************/
+
+String outputState(){
+  if(digitalRead(LED2_PIN)){
+    return "checked";
+  }
+  else {
+    return "";
+  }
+  return "";
+}
+
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE HTML><html>
+<head>
+  <title>ESP Web Server</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html {font-family: Arial; display: inline-block; text-align: center;}
+    h2 {font-size: 3.0rem;}
+    p {font-size: 3.0rem;}
+    body {max-width: 600px; margin:0px auto; padding-bottom: 25px;}
+    .switch {position: relative; display: inline-block; width: 120px; height: 68px} 
+    .switch input {display: none}
+    .slider {position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; border-radius: 34px}
+    .slider:before {position: absolute; content: ""; height: 52px; width: 52px; left: 8px; bottom: 8px; background-color: #fff; -webkit-transition: .4s; transition: .4s; border-radius: 68px}
+    input:checked+.slider {background-color: #2196F3}
+    input:checked+.slider:before {-webkit-transform: translateX(52px); -ms-transform: translateX(52px); transform: translateX(52px)}
+  </style>
+</head>
+<body>
+  <h2>ESP Web Server</h2>
+  %BUTTONPLACEHOLDER%
+<script>function toggleCheckbox(element) {
+  var xhr = new XMLHttpRequest();
+  if(element.checked){ xhr.open("GET", "/update?state=1", true); }
+  else { xhr.open("GET", "/update?state=0", true); }
+  xhr.send();
+}
+
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      var inputChecked;
+      var outputStateM;
+      if( this.responseText == 1){ 
+        inputChecked = true;
+        outputStateM = "On";
+      }
+      else { 
+        inputChecked = false;
+        outputStateM = "Off";
+      }
+      document.getElementById("output").checked = inputChecked;
+      document.getElementById("outputState").innerHTML = outputStateM;
+    }
+  };
+  xhttp.open("GET", "/state", true);
+  xhttp.send();
+}, 1000 ) ;
+</script>
+</body>
+</html>
+)rawliteral";
+
+// Replaces placeholder with button section in your web page
+String processor(const String& var){
+  //Serial.println(var);
+  if(var == "BUTTONPLACEHOLDER"){
+    String buttons ="";
+    String outputStateValue = outputState();
+    String difficulty = String(nb_leds_strip_used);
+    buttons+= "<h4>Diffuculty chosen = " + difficulty + "</h4><label class=\"switch\"><input type=\"checkbox\" onchange=\"toggleCheckbox(this)\" id=\"output\" " + outputStateValue + "><span class=\"slider\"></span></label>";
+    return buttons;
+  }
+  return String();
+}
 
 /********************
         SETUP
@@ -95,6 +198,48 @@ void setup() {
   pinMode(BUTTON_B_PIN, INPUT_PULLUP);
   pinMode(BUTTON_Y_PIN, INPUT_PULLUP);
 
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000); // to change
+    Serial.println("Connecting to WiFi..");
+  }
+
+    // Print ESP Local IP Address
+  Serial.println(WiFi.localIP());
+
+  
+  // Route for root / web page
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", index_html, processor);
+  });
+
+  // Send a GET request to <ESP_IP>/update?state=<inputMessage>
+  server.on("/update", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    String inputMessage;
+    String inputParam;
+    // GET input1 value on <ESP_IP>/update?state=<inputMessage>
+    if (request->hasParam(PARAM_INPUT_1)) {
+      inputMessage = request->getParam(PARAM_INPUT_1)->value();
+      inputParam = PARAM_INPUT_1;
+      digitalWrite(LED2_PIN, inputMessage.toInt());
+      ledState = !ledState;
+    }
+    else {
+      inputMessage = "No message sent";
+      inputParam = "none";
+    }
+    Serial.println(inputMessage);
+    request->send(200, "text/plain", "OK");
+  });
+
+  // Send a GET request to <ESP_IP>/state
+  server.on("/state", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(digitalRead(LED2_PIN)).c_str());
+  });
+  // Start server
+  server.begin();
+
   // turn off all the leds of the 2 strips
   for(int i = 0; i < total_nb_leds_strip; i++){
     strip_led1.clear(); // turn of the leds of the first trip
@@ -112,7 +257,22 @@ void setup() {
 *********************/
 
 void loop() {
-  
+
+  ///////////////
+  // Websocket // 
+  ///////////////
+
+  // Control the second led trip remotely:
+  int brightness_onoff;
+  if(ledState == 1) brightness_onoff = 255;
+  else brightness_onoff = 0;
+
+  for(int i = 0; i < 10; i++){
+    strip_led2.setBrightness(brightness_onoff);
+    strip_led2.setPixelColor(i, 255, 255, 255);
+    strip_led2.show();
+  }
+    
   ///////////////////
   // Machine turn // 
   /////////////////
@@ -126,25 +286,25 @@ void loop() {
 
     // displays 3 blinks of white before beginning the sequence 
     for(int blink_w=0; blink_w < 3; blink_w++){// on 
-        for(int i = 0; i < nb_leds_strip; i++){ // for every led
+        for(int i = 0; i < nb_leds_strip_used; i++){ // for every led
           strip_led1.setPixelColor(i, white);
           strip_led2.setPixelColor(i, white); 
           strip_led1.show();
           strip_led2.show();
         }
-      delay(delay_display/2); // wait half the usual time
+      delay(delay_display/2); // wait half the usual time // to change
       
-      for(int i = 0; i < nb_leds_strip; i++){ // off
+      for(int i = 0; i < nb_leds_strip_used; i++){ // off
           strip_led1.clear(); 
           strip_led2.clear();
           strip_led1.show();
           strip_led2.show();
         }
-      delay(delay_display/2); // wait half the usual time
+      delay(delay_display/2); // wait half the usual time // to change
     }
     
-    // displaying the sequence of nb_leds_strip colors
-    for (int i = 0; i < nb_leds_strip; i++){
+    // displaying the sequence of nb_leds_strip_used colors
+    for (int i = 0; i < nb_leds_strip_used; i++){
       
       // selection of a new random color 
       do{
@@ -163,7 +323,7 @@ void loop() {
       Serial.println(rand_color);
 
       // displays the color on strip 1
-      for(int j = 0; j < nb_leds_strip; j++){
+      for(int j = 0; j < nb_leds_strip_used; j++){
         strip_led1.setPixelColor(j, color_display); 
         strip_led1.show(); // refresh all the leds
       }
@@ -174,11 +334,11 @@ void loop() {
         strip_led2.show(); // refresh all the leds
       }
 
-      delay(delay_display); // wait for the wanted time between each color
+      delay(delay_display); // wait for the wanted time between each color // to change
 
     } // end of sequence display
 
-    // when the nb_leds_strip colors are displayed, we begin the player turn
+    // when the nb_leds_strip_used colors are displayed, we begin the player turn
     player_turn = true;
 
     //turn of all the lights
@@ -199,24 +359,28 @@ void loop() {
 
   else{
 
-    // all the nb_leds_strip colors are chosen correctly : display all in green
-    if(player_loop_number >= nb_leds_strip - 1){
-      for(int i = 0; i < nb_leds_strip; i++){ 
+    // all the nb_leds_strip_used colors are chosen correctly : display all in green
+    if(player_loop_number >= nb_leds_strip_used - 1){
+      for(int i = 0; i < nb_leds_strip_used; i++){ 
         strip_led1.setPixelColor(i, green); 
         strip_led2.setPixelColor(i, green); 
         strip_led1.show();
         strip_led2.show();
       }
+      delay(5000); // to change
+      ESP.restart(); // reset to restart the game
     }
 
     // the player lost in the previous loop : display all in red
     else if(player_lost){ 
-      for(int i = 0; i < nb_leds_strip; i++){
+      for(int i = 0; i < nb_leds_strip_used; i++){
         strip_led1.setPixelColor(i, red); 
         strip_led2.setPixelColor(i, red); 
         strip_led1.show();
         strip_led2.show();
       }
+      delay(5000); // to change
+      ESP.restart(); // reset to restart the game
     }
 
     // the player is correct but has not finished the sequence: continue the game
@@ -257,12 +421,10 @@ void loop() {
         player_color_list[player_loop_number] = player_color;
 
         // display the player sequence on the first strip
-        for(int i = 0; i < nb_leds_strip; i++){ 
+        for(int i = 0; i < nb_leds_strip_used; i++){ 
           strip_led1.setPixelColor(i, player_color_list[i]); 
           strip_led1.show();
         }
-
-        Serial.println(player_color_int); // display the player selected color ([0,3] equivalent)
 
         // checks for player mistake
         if(player_loop_number >=0){ // don't check before the first button is pressed
@@ -279,7 +441,7 @@ void loop() {
       lastState_B = currentState_B;
       lastState_Y = currentState_Y;
       
-      delay(20); // small delay to avoid a repetition bug (two inputs instead of one)
+      delay(20); // small delay to avoid a repetition bug (two inputs instead of one) // to change
 
     } // end of player input
   } // end of machine turn

@@ -1,3 +1,6 @@
+/*
+ Basic code to detect a button
+*/
 #include <Arduino.h>
 
 #define BUTTON_R_PIN 34 // pin of the red button

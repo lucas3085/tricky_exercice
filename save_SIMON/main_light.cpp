@@ -1,3 +1,7 @@
+/*
+ Basic code to turn on the led strips
+*/
+
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
 
@@ -18,13 +22,11 @@ void setup() {
 void loop() {
   for(int i = 0; i < 10; i++){
     pixels1.setBrightness(255);
-  pixels1.clear();
   pixels1.setPixelColor(i, 255, 190, 0);
   pixels1.show();
   }
   for(int i = 0; i < 10; i++){
     pixels2.setBrightness(255);
-  pixels2.clear();
   pixels2.setPixelColor(i, 0, 0, 255);
   pixels2.show();
   } 

@@ -50,11 +50,11 @@ uint32_t white = strip_led1.Color(255, 255, 255); // packed RGB of white
   GAMEPLAY VARIABLES
 *********************/
 
-int brightness = 30; // brightness of the leds (0-255)
+int brightness = 50; // brightness of the leds (0-255)
 double delay_display = 750; // waiting time between each color (in ms)
 int color_before = -1; // used in the loop to have a new color every time
 int player_loop_number = -1; // number of buttons pressed by the user
-#define nb_leds_strip 6 // USED number of leds in each strip : DIFFICULTY (1-total_nb_leds_strip)
+#define nb_leds_strip 10 // USED number of leds in each strip : DIFFICULTY [1,total_nb_leds_strip]
 
 /********************
     OTHER VARIABLES
